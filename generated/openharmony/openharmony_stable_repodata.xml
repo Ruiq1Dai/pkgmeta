@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<repodata><channel>stable</channel><count>564</count><generated>2025-10-26T13:26:05.668873Z</generated><sources><source name="ohpm_source_index" url="https://ohpm.openharmony.cn/packages-index.json" /><source name="tpc_mirror" url="https://api.gitcode.com/api/v5/orgs/OpenHarmony-TPC/repos?per_page=100&amp;page={page}" /></sources></repodata>

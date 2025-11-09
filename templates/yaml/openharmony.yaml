@@ -1,0 +1,56 @@
+###########################################################################
+# OpenHarmony
+###########################################################################
+{% macro openharmony(channel, minpackages, valid_till=None) %}
+- name: openharmony_{{channel|lower|replace('.', '_')|replace('-', '_')}}
+  type: repository
+  desc: OpenHarmony {{channel|title}} Third-Party Components
+  statsgroup: OpenHarmony
+  family: openharmony
+  ruleset: [npm, openharmony]
+  color: '00A0E9'
+  minpackages: {{minpackages}}
+  {% if valid_till %}
+  valid_till: {{valid_till}}-01
+  {% endif %}
+  update_period: 1w
+  note: >
+    Aggregated list of third-party JS/TS components for OpenHarmony.
+    Data originates from the official OHPM package center and the
+    OpenHarmony-TPC organization on GitCode.
+  sources:
+    - name: ohpm_source_index
+      fetcher:
+        class: JsonFetcher
+        url: https://ohpm.openharmony.cn/packages-index.json
+      parser:
+        class: OhpmIndexParser
+        note: >
+          Fetch pre-built JSON index of packages published on OHPM.
+          (Equivalent to previous API calls but abstracted as a static index.)
+    - name: tpc_mirror
+      fetcher:
+        class: WebpageFetcher
+        url: https://gitcode.com/org/openharmony-tpc/repos
+      parser:
+        class: GitCodeProjectsParser
+        note: >
+          Backup source: parse repository cards to cross-link component names.
+  repolinks:
+    - desc: OpenHarmony home
+      url: https://www.openharmony.cn/
+    - desc: OHPM package center
+      url: https://ohpm.openharmony.cn/
+    - desc: OpenHarmony-TPC organization on GitCode
+      url: https://gitcode.com/org/openharmony-tpc
+  packagelinks:
+    - type: PACKAGE_HOMEPAGE
+      url: 'https://ohpm.openharmony.cn/#/cn/detail/{srcname}'
+    - type: PACKAGE_SOURCES
+      url: 'https://gitcode.com/openharmony-tpc/{srcname}'
+  groups: [ all, production, openharmony, npm ]
+{% endmacro %}
+
+{{ openharmony('stable',  minpackages=1500, valid_till='2026-12') }}
+{{ openharmony('beta',    minpackages=800,  valid_till='2025-12') }}
+{{ openharmony('archived',minpackages=300,  valid_till='2024-12') }}

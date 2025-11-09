@@ -1,0 +1,97 @@
+###########################################################################
+# Fedora
+#
+# EoLs: https://en.wikipedia.org/wiki/Fedora_(operating_system)
+#
+# Also see https://fedoraproject.org/wiki/List_of_Fedora_remixes for remixes
+###########################################################################
+
+# XXX: consider adding the following packagelinks
+#  info on binary package, probably needs binname(s); links to build logs and other nice stuff
+#  url: 'https://koji.fedoraproject.org/koji/search?terms={srcname}-{rawversion}&type=build&match=glob'
+#
+#  url: 'https://packages.fedoraproject.org/pkgs/{srcname}'
+
+# Note that https://download.fedoraproject.org/pub/fedora redirects to a geo mirror. This
+# redirect is unstable and interleave fresh and outdated mirrors and make package versions
+# jump around, so just a random Europe mirror is used
+
+{% set main_mirror = 'https://fr2.rpmfind.net/linux/fedora/linux' %}
+{% set archive_mirror = 'https://archives.fedoraproject.org/pub/archive/fedora/linux' %}
+
+{% macro fedora(version, minpackages, valid_till, development=False, archived=False) %}
+{% set fversion = 'rawhide' if version == 'rawhide' else 'f' + version|string %}
+{% set ucversion = version|title %}
+{% set mirror = archive_mirror if archived else main_mirror %}
+- name: fedora_{{version}}
+  type: repository
+  desc: Fedora {{ucversion}}
+  statsgroup: Fedora
+  family: fedora
+  ruleset: [fedora, rpm]
+  color: '294172'
+  minpackages: {{minpackages}}
+  {% if valid_till %}
+  valid_till: {{valid_till}}
+  {% endif %}
+  sources:
+    {% set mainrepo='development' if development else 'release' %}
+    - name: {{mainrepo}}
+      fetcher:
+        class: RepodataFetcher
+        {% if development %}
+        url: {{mirror}}/development/{{version}}/Everything/source/tree/
+        {% else %}
+        url: {{mirror}}/releases/{{version}}/Everything/source/tree/
+        {% endif %}
+      parser:
+        class: RepodataParser
+        vertags: fc
+      subrepo: {{mainrepo}}
+    {% if version != 'rawhide' %}
+    - name: updates
+      fetcher:
+        class: RepodataFetcher
+        url: {{mirror}}/updates/{{version}}/Everything/source/tree/
+      parser:
+        class: RepodataParser
+        vertags: fc
+      subrepo: updates
+    {% endif %}
+  repolinks:
+    - desc: Fedora home
+      url: https://getfedora.org/
+    - desc: Fedora Packages Search
+      url: https://packages.fedoraproject.org/
+    - desc: Fedora repository for package maintenance
+      url: https://src.fedoraproject.org/
+  packagelinks:
+    {% if not archived %}
+    - type: PACKAGE_HOMEPAGE
+      url: 'https://packages.fedoraproject.org/pkgs/{srcname}/'
+    {% endif %}
+    - type: PACKAGE_SOURCES
+      url: 'https://src.fedoraproject.org/rpms/{srcname}/tree/{{fversion}}'
+    - type: PACKAGE_RECIPE
+      url: 'https://src.fedoraproject.org/rpms/{srcname}/blob/{{fversion}}/f/{srcname}.spec'
+    - type: PACKAGE_RECIPE_RAW
+      url: 'https://src.fedoraproject.org/rpms/{srcname}/raw/{{fversion}}/f/{srcname}.spec'
+    # could be more specific, but we need binname(s) for that
+    # see https://github.com/repology/repology-updater/issues/1274
+    # see the same for epel
+    #- type: PACKAGE_BUILD_LOG
+    #  url: 'https://kojipkgs.fedoraproject.org/packages/{srcname}/{rpmversion}/{rpmrelease}/data/logs/{arch}/build.log'
+    - type: PACKAGE_BUILD_LOGS
+      url: 'https://kojipkgs.fedoraproject.org/packages/{srcname}/{rpmversion}/{rpmrelease}/data/logs/'
+  groups: [ all, production, fedora, rpm ]
+{% endmacro %}
+
+# Dates from https://en.wikipedia.org/wiki/Fedora_Linux_release_history
+{{ fedora(37, minpackages=21000, valid_till='2023-12-05', archived=True) }}
+{{ fedora(38, minpackages=21000, valid_till='2024-05-21', archived=True) }}
+{{ fedora(39, minpackages=21000, valid_till='2024-11-26', archived=True) }}
+{{ fedora(40, minpackages=21000, valid_till='2025-05-13', archived=True) }}
+{{ fedora(41, minpackages=21000, valid_till='2025-11-19') }}
+{{ fedora(42, minpackages=21000, valid_till='2026-05-13') }}
+{# fedora(43, minpackages=21000, valid_till='2026-12-02', development=True) #}
+{{ fedora('rawhide', minpackages=21000, development=True) }}
