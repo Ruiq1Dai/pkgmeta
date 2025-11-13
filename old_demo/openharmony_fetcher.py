@@ -402,48 +402,8 @@ class SeleniumFetcher:
 
 
 def main():
-    """测试函数 - 测试三种fetcher"""
-    import os
-    
-    # 创建输出目录
-    os.makedirs('generated/test', exist_ok=True)
-    
-    print("=" * 60)
-    print("测试1: WebpageFetcher - OHPM Landscape 页面")
-    print("=" * 60)
-    webpage_fetcher = WebpageFetcher(
-        url='https://ohpm.openharmony.cn/#/cn/landscape'
-    )
-    if webpage_fetcher.fetch('generated/test/ohpm_landscape.html'):
-        print("✓ OHPM Landscape 页面抓取成功\n")
-    else:
-        print("✗ OHPM Landscape 页面抓取失败\n")
-    
-    print("=" * 60)
-    print("测试2: APIFetcher - OHPM API")
-    print("=" * 60)
-    api_fetcher = APIFetcher(
-        url='https://ohpm.openharmony.cn/api/v1/packages/search?keyword=js&page=1&pageSize=100'
-    )
-    if api_fetcher.fetch('generated/test/ohpm_api_packages.json'):
-        print("✓ OHPM API 数据抓取成功\n")
-    else:
-        print("✗ OHPM API 数据抓取失败\n")
-    
-    print("=" * 60)
-    print("测试3: WebpageFetcher - GitCode TPC 仓库页面")
-    print("=" * 60)
-    gitcode_fetcher = WebpageFetcher(
-        url='https://gitcode.com/org/openharmony-tpc/repos'
-    )
-    if gitcode_fetcher.fetch('generated/test/gitcode_tpc_repos.html'):
-        print("✓ GitCode TPC 仓库页面抓取成功\n")
-    else:
-        print("✗ GitCode TPC 仓库页面抓取失败\n")
-    
-    print("=" * 60)
-    print("所有测试完成!")
-    print("=" * 60)
+    """最小产物模式：不直接产出文件。请通过 start.py 调用 OpenHarmony 分析。"""
+    print("OpenHarmony fetchers ready. Use start.py to run minimal artifact generation.")
 
 
 if __name__ == "__main__":

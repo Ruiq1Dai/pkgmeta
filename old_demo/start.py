@@ -10,12 +10,12 @@ from pathlib import Path
 
 # 导入所有fetcher和parser类
 from openharmony_fetcher import WebpageFetcher, JsonFetcher, APIFetcher, APIBatchFetcher, SeleniumFetcher
-from openharmony_parser import OHPMParser, OhpmIndexParser, OHPMJsonParser, GitCodeProjectsParser, GiteeRepoParser
+from openharmony_parser import OHPMParser, OhpmIndexParser, OHPMJsonParser, GitCodeProjectsParser, GiteeRepoParser, build_openharmony_fedora_json, write_openharmony_fedora_primary_xml
 from repodata_fetcher import RepodataFetcher
 from repodata_parser import RepodataParser
 
 
-def analyze_openharmony(output_dir: str = "generated/openharmony", release: str = "stable"):
+def analyze_openharmony(output_dir: str = "generated", release: str = "stable"):
     """分析OpenHarmony仓库"""
     print("=" * 60)
     print("开始分析 OpenHarmony 仓库")
@@ -43,6 +43,9 @@ def analyze_openharmony(output_dir: str = "generated/openharmony", release: str 
     ]
     
     all_packages = []
+    # 使用临时目录存放中间文件，结束后清理
+    tmp_dir = os.path.join(output_dir, ".tmp_openharmony")
+    os.makedirs(tmp_dir, exist_ok=True)
     
     for source in sources:
         print(f"\n{'='*60}")
@@ -51,7 +54,7 @@ def analyze_openharmony(output_dir: str = "generated/openharmony", release: str 
         
         # 步骤1: 获取数据
         print(f"\n1. 获取 {source['name']} 数据...")
-        temp_file = os.path.join(output_dir, source['output'])
+        temp_file = os.path.join(tmp_dir, source['output'])
         
         try:
             if source['fetcher'].fetch(temp_file):
@@ -78,73 +81,51 @@ def analyze_openharmony(output_dir: str = "generated/openharmony", release: str 
         except Exception as e:
             print(f"   ✗ 解析失败: {e}")
             continue
-    
-    # 步骤3: 合并并保存所有数据
+
+    # 步骤3: 依据 Fedora 契约写出最小产物（仅两个文件）
     print(f"\n{'='*60}")
-    print("保存合并结果")
+    print("保存最小产物（契约对齐 Fedora）")
     print(f"{'='*60}")
-    
-    # 输出文件名：openharmony_[release]_all_packages.json（Fedora风格字段）
-    output_file = os.path.join(output_dir, f"openharmony_{release}_all_packages.json")
-    
-    try:
-        # 转换为 Fedora 风格的字段结构
-        def to_fedora_like(pkg):
-            return {
-                'name': getattr(pkg, 'name', None),
-                'version': getattr(pkg, 'version', '') or '',
-                'release': f"{release}.ohpm",
-                'epoch': '0',
-                'arch': 'src',
-                'summary': getattr(pkg, 'description', None),
-                'url': getattr(pkg, 'homepage', None) or getattr(pkg, 'repository', None),
-                'license': getattr(pkg, 'license', None),
-                'group': 'Unspecified',
-                'packager': 'OpenHarmony Project',
-                'sourcerpm': None,
-                'binnames': [],
-                'is_src': True,
-                'subrepo': release
-            }
 
-        fedora_like = [to_fedora_like(pkg) for pkg in all_packages]
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(fedora_like, f, ensure_ascii=False, indent=2)
-        print(f"✓ 所有包数据已保存到: {output_file}")
+    try:
+        # 契约路径（以本文件位置为基准）
+        here = Path(__file__).parent
+        fedora_json_contract = here / 'generated' / 'fedora_41' / 'fedora_41_all_packages.json'
+        fedora_xml_contract = here / 'generated' / 'fedora_41' / 'fedora_41_release_repodata.xml'
+
+        # 生成 JSON（键顺序/空值策略/排序与 Fedora 对齐）
+        json_items = build_openharmony_fedora_json(
+            packages=all_packages,
+            fedora_json_contract_path=str(fedora_json_contract),
+            subrepo='release'
+        )
+        json_output = os.path.join(output_dir, 'openharmony_all_packages.json')
+        with open(json_output, 'w', encoding='utf-8') as f:
+            json.dump(json_items, f, ensure_ascii=False, indent=2)
+        print(f"✓ JSON 输出: {json_output}")
+
+        # 生成 XML（Fedora primary.xml 风格）
+        xml_output = os.path.join(output_dir, 'openharmony_release_repodata.xml')
+        write_openharmony_fedora_primary_xml(
+            packages=all_packages,
+            output_path=xml_output,
+            fedora_xml_contract_path=str(fedora_xml_contract),
+            subrepo='release'
+        )
+        print(f"✓ XML 输出: {xml_output}")
     except Exception as e:
-        print(f"✗ 保存失败: {e}")
+        print(f"✗ 生成最小产物失败: {e}")
         return False
 
-    # 生成最简 openharmony_[release]_repodata.xml
+    # 清理中间文件，仅保留最终两个产物（位于 generated/ 根目录）
     try:
-        import xml.etree.ElementTree as ET
-        from datetime import datetime
-        repodata_root = ET.Element('repodata')
-        ET.SubElement(repodata_root, 'channel').text = release
-        ET.SubElement(repodata_root, 'count').text = str(len(all_packages))
-        ET.SubElement(repodata_root, 'generated').text = datetime.utcnow().isoformat() + 'Z'
-        sources_elem = ET.SubElement(repodata_root, 'sources')
-        for src in sources:
-            s = ET.SubElement(sources_elem, 'source')
-            s.set('name', src['name'])
-            try:
-                s.set('url', getattr(src['fetcher'], 'url', '') or '')
-            except Exception:
-                s.set('url', '')
-        tree = ET.ElementTree(repodata_root)
-        repodata_file = os.path.join(output_dir, f"openharmony_{release}_repodata.xml")
-        tree.write(repodata_file, encoding='utf-8', xml_declaration=True)
-        print(f"✓ 元数据已保存到: {repodata_file}")
-    except Exception as e:
-        print(f"✗ 生成 repodata 失败: {e}")
-        return False
-
-    # 清理中间文件，仅保留最终两个产物
-    try:
-        for src in sources:
-            temp_file = os.path.join(output_dir, src['output'])
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+        if os.path.isdir(tmp_dir):
+            for fname in os.listdir(tmp_dir):
+                try:
+                    os.remove(os.path.join(tmp_dir, fname))
+                except Exception:
+                    pass
+            os.rmdir(tmp_dir)
     except Exception:
         pass
     

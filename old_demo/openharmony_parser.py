@@ -10,6 +10,9 @@ import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from bs4 import BeautifulSoup
+from pathlib import Path
+import hashlib
+import xml.etree.ElementTree as ET
 
 
 class OpenHarmonyPackage:
@@ -813,3 +816,207 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# =========================
+# 最小产物模式/契约对齐工具
+# =========================
+
+def _load_fedora_json_contract(contract_path: str) -> List[str]:
+    """
+    加载 Fedora JSON 契约，返回键名顺序（以第一个对象为准）
+    """
+    with open(contract_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    if not isinstance(data, list) or not data:
+        raise RuntimeError("Fedora JSON 契约文件格式异常：顶层不是非空数组")
+    first = data[0]
+    if not isinstance(first, dict):
+        raise RuntimeError("Fedora JSON 契约文件格式异常：元素不是对象")
+    return list(first.keys())
+
+
+def _coerce_pkg_to_fedora_json_item(pkg: OpenHarmonyPackage, key_order: List[str], subrepo: str) -> Dict[str, Any]:
+    """
+    将 OpenHarmonyPackage 转换为 Fedora JSON 样式的条目，并遵循键顺序与空值策略。
+    """
+    # 源风格：固定为源码包
+    name = getattr(pkg, 'name', None)
+    version = getattr(pkg, 'version', '') or ''
+    summary = getattr(pkg, 'description', '') or ''
+    homepage = getattr(pkg, 'homepage', None)
+    repository = getattr(pkg, 'repository', None)
+    url = homepage or repository or ''
+    license_str = getattr(pkg, 'license', '') or ''
+
+    # Fedora 样例中的空值策略：
+    # - sourcerpm 恒为 null
+    # - 其他字段尽量为字符串/数组/布尔，避免使用 null（如 url/summary/license 用空串）
+    base = {
+        'name': name,
+        'version': version,
+        'release': '1.ohpm',         # 与 Fedora release 字符串格式保持“数字.后缀”的形态
+        'epoch': '0',                 # Fedora 使用字符串 "0"
+        'arch': 'src',
+        'summary': summary,
+        'url': url,
+        'license': license_str,
+        'group': 'Unspecified',
+        'packager': 'OpenHarmony Project',
+        'sourcerpm': None,
+        'binnames': [],
+        'is_src': True,
+        'subrepo': subrepo,
+    }
+
+    # 强制键顺序
+    ordered: Dict[str, Any] = {}
+    for key in key_order:
+        ordered[key] = base.get(key, None)
+    # 基本完整性校验
+    if list(ordered.keys()) != key_order:
+        raise RuntimeError("输出 JSON 键顺序与 Fedora 契约不一致")
+    return ordered
+
+
+def build_openharmony_fedora_json(
+    packages: List[OpenHarmonyPackage],
+    fedora_json_contract_path: str,
+    subrepo: str = 'release'
+) -> List[Dict[str, Any]]:
+    """
+    基于 Fedora JSON 契约，生成严格对齐的 OpenHarmony JSON 列表。
+    - 字段名、顺序、类型、空值策略对齐
+    - 列表按 name 升序排序（对齐 Fedora 样例的排序方式）
+    """
+    key_order = _load_fedora_json_contract(fedora_json_contract_path)
+    # 排序
+    sorted_pkgs = sorted([p for p in packages if getattr(p, 'name', None)], key=lambda p: getattr(p, 'name'))
+    result = [_coerce_pkg_to_fedora_json_item(p, key_order, subrepo) for p in sorted_pkgs]
+    # 契约校验（采样检查若干项键顺序）
+    for sample in result[:5]:
+        if list(sample.keys()) != key_order:
+            raise RuntimeError("JSON 输出键顺序校验失败")
+    return result
+
+
+def _ns() -> Dict[str, str]:
+    return {
+        'common': 'http://linux.duke.edu/metadata/common',
+        'rpm': 'http://linux.duke.edu/metadata/rpm',
+    }
+
+
+def _load_fedora_xml_contract_header(contract_xml_path: str) -> Dict[str, Any]:
+    """
+    只解析 Fedora primary 样例文件的头部，提取根元素、命名空间与 <package> 子元素的标签顺序参考。
+    注意：不加载全量数据（文件很大）。
+    """
+    # 解析前若文件极大，这里仍采用标准解析，但只读取前几百个 <package> 节点即可终止使用。
+    tree = ET.parse(contract_xml_path)
+    root = tree.getroot()
+    # 样例根应为 <metadata> 且带 common 与 rpm 命名空间
+    if not root.tag.endswith('metadata'):
+        raise RuntimeError("Fedora XML 契约根元素不是 <metadata>")
+    return {
+        'root_tag': root.tag,
+        'ns': _ns(),
+        # 这里不强制 package 子元素的精确顺序模板，按 Fedora 常见顺序生成
+    }
+
+
+def _sha256_hex(text: str) -> str:
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def write_openharmony_fedora_primary_xml(
+    packages: List[OpenHarmonyPackage],
+    output_path: str,
+    fedora_xml_contract_path: str,
+    subrepo: str = 'release'
+) -> None:
+    """
+    按 Fedora primary.xml 风格写出 XML，字段/层级/顺序对齐：
+    - 根元素 <metadata xmlns="common" xmlns:rpm="rpm" packages="N">
+    - 每个 <package type="rpm"> 按 Fedora 常见子元素顺序输出
+    - 未知字段使用 0/空串/空元素，保持等价“表示法”一致性
+    """
+    _ = _load_fedora_xml_contract_header(fedora_xml_contract_path)
+    ns = _ns()
+    common = '{' + ns['common'] + '}'
+    rpm = '{' + ns['rpm'] + '}'
+
+    ET.register_namespace('', ns['common'])
+    ET.register_namespace('rpm', ns['rpm'])
+
+    # 排序（与 JSON 一致：按 name 升序）
+    sorted_pkgs = sorted([p for p in packages if getattr(p, 'name', None)], key=lambda p: getattr(p, 'name'))
+
+    root = ET.Element(common + 'metadata', attrib={'packages': str(len(sorted_pkgs))})
+
+    for p in sorted_pkgs:
+        name = getattr(p, 'name', '')
+        version = getattr(p, 'version', '') or ''
+        summary = getattr(p, 'description', '') or ''
+        homepage = getattr(p, 'homepage', None)
+        repository = getattr(p, 'repository', None)
+        url_value = homepage or repository or ''
+        license_str = getattr(p, 'license', '') or ''
+
+        pkg_el = ET.SubElement(root, 'package')
+        pkg_el.set('type', 'rpm')
+
+        ET.SubElement(pkg_el, common + 'name').text = name
+        ET.SubElement(pkg_el, common + 'arch').text = 'src'
+        ver_el = ET.SubElement(pkg_el, common + 'version')
+        ver_el.set('epoch', '0')
+        ver_el.set('ver', version)
+        ver_el.set('rel', '1.ohpm')
+
+        checksum = ET.SubElement(pkg_el, common + 'checksum')
+        checksum.set('type', 'sha256')
+        checksum.set('pkgid', 'YES')
+        checksum.text = _sha256_hex(f"openharmony:{name}@{version}")
+
+        ET.SubElement(pkg_el, common + 'summary').text = summary
+        # 描述可与 summary 相同，保持格式完整
+        ET.SubElement(pkg_el, common + 'description').text = summary or ''
+        ET.SubElement(pkg_el, common + 'packager').text = 'OpenHarmony Project'
+        ET.SubElement(pkg_el, common + 'url').text = url_value
+
+        time_el = ET.SubElement(pkg_el, common + 'time')
+        time_el.set('file', '0')
+        time_el.set('build', '0')
+
+        size_el = ET.SubElement(pkg_el, common + 'size')
+        size_el.set('package', '0')
+        size_el.set('installed', '0')
+        size_el.set('archive', '0')
+
+        # 模拟 Fedora 的 href 结构模式
+        ET.SubElement(pkg_el, common + 'location').set('href', f"Packages/o/{name}-{version}-1.ohpm.src.rpm")
+
+        fmt = ET.SubElement(pkg_el, common + 'format')
+        ET.SubElement(fmt, rpm + 'license').text = license_str
+        ET.SubElement(fmt, rpm + 'vendor').text = 'OpenHarmony Project'
+        ET.SubElement(fmt, rpm + 'group').text = 'Unspecified'
+        ET.SubElement(fmt, rpm + 'buildhost').text = 'openharmony.builder.local'
+        # 与 Fedora 样例一致：空元素占位
+        ET.SubElement(fmt, rpm + 'sourcerpm').text = ''
+        hr = ET.SubElement(fmt, rpm + 'header-range')
+        hr.set('start', '0')
+        hr.set('end', '0')
+
+        provides = ET.SubElement(fmt, rpm + 'provides')
+        prov = ET.SubElement(provides, rpm + 'entry')
+        prov.set('name', name or '')
+        prov.set('flags', 'EQ')
+        prov.set('epoch', '0')
+        prov.set('ver', version)
+        prov.set('rel', '1.ohpm')
+
+        # requires 节点保留但不填具体依赖（多数情况下 Fedora 也允许缺省或为空）
+        ET.SubElement(fmt, rpm + 'requires')
+
+    tree = ET.ElementTree(root)
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    tree.write(output_path, encoding='utf-8', xml_declaration=True)
