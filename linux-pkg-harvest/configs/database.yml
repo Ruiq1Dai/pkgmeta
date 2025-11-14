@@ -1,0 +1,20 @@
+# Database configuration for MariaDB
+
+database:
+  host: "127.0.0.1"
+  port: 3306
+  user: "root"
+  password: "password"
+  database: "pkg_harvest"
+  charset: "utf8mb4"
+  
+  # Connection pool settings
+  pool_size: 5
+  max_overflow: 10
+  pool_timeout: 30
+  pool_recycle: 3600
+
+
+# Auto-initialize schema on first connection
+auto_init_schema: true
+

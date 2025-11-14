@@ -1,0 +1,181 @@
+# Collector configurations
+
+collectors:
+  openeuler:
+    enabled: true
+    base_url: "https://repo.openeuler.org"
+    family: centos
+    ruleset: [centos, rpm, openeuler]
+
+    versions:
+      - version: "20.03-LTS-SP3"
+        minpackages: 1500
+        valid_till: "2025-12-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-20.03-LTS-SP3/source/"
+
+      - version: "20.03-LTS-SP4"
+        minpackages: 1500
+        valid_till: "2025-12-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-20.03-LTS-SP4/source/"
+
+      - version: "22.03-LTS"
+        minpackages: 3000
+        valid_till: "2024-03-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-22.03-LTS/source/"
+
+      - version: "22.03-LTS-SP1"
+        minpackages: 3000
+        valid_till: "2024-12-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-22.03-LTS-SP1/source/"
+
+      - version: "22.03-LTS-SP2"
+        minpackages: 3000
+        valid_till: "2024-03-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-22.03-LTS-SP2/source/"
+
+      - version: "22.03-LTS-SP3"
+        minpackages: 3000
+        valid_till: "2025-12-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-22.03-LTS-SP3/source/"
+
+      - version: "22.03-LTS-SP4"
+        minpackages: 3000
+        valid_till: "2026-06-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-22.03-LTS-SP4/source/"
+
+      - version: "23.09"
+        minpackages: 3000
+        valid_till: "2024-03-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-23.09/source/"
+
+      - version: "24.03-LTS"
+        minpackages: 3000
+        valid_till: "2026-05-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-24.03-LTS/source/"
+
+      - version: "24.03-LTS-SP1"
+        minpackages: 3000
+        valid_till: "2026-12-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-24.03-LTS-SP1/source/"
+
+      - version: "24.09"
+        minpackages: 3000
+        valid_till: "2025-03-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-24.09/source/"
+
+      - version: "25.03"
+        minpackages: 3000
+        valid_till: "2025-09-01"
+        metadata_url: "https://repo.openeuler.org/openEuler-25.03/source/"
+
+    links:
+      homepage: "https://openeuler.org/en/"
+
+    package_links:
+      sources_template: "https://gitee.com/src-openeuler/{srcname}/tree/openEuler-{version}/"
+      recipe_template: "https://gitee.com/src-openeuler/{srcname}/blob/openEuler-{version}/{srcname}.spec"
+      recipe_raw_template: "https://gitee.com/src-openeuler/{srcname}/raw/openEuler-{version}/{srcname}.spec"
+
+  fedora:
+    enabled: true
+    base_url: "https://dl.fedoraproject.org/pub/fedora/linux"
+    mirror_url: "https://fr2.rpmfind.net/linux/fedora/linux"
+    archive_url: "https://archives.fedoraproject.org/pub/archive/fedora/linux"
+    family: fedora
+    ruleset: [fedora, rpm]
+
+    versions:
+      - version: "37"
+        minpackages: 21000
+        valid_till: "2023-12-05"
+        archived: true
+        repos:
+          - name: "release"
+            metadata_url: "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/37/Everything/source/tree/"
+          - name: "updates"
+            metadata_url: "https://archives.fedoraproject.org/pub/archive/fedora/linux/updates/37/Everything/source/tree/"
+
+      - version: "38"
+        minpackages: 21000
+        valid_till: "2024-05-21"
+        archived: true
+        repos:
+          - name: "release"
+            metadata_url: "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/38/Everything/source/tree/"
+          - name: "updates"
+            metadata_url: "https://archives.fedoraproject.org/pub/archive/fedora/linux/updates/38/Everything/source/tree/"
+
+      - version: "39"
+        minpackages: 21000
+        valid_till: "2024-11-26"
+        archived: true
+        repos:
+          - name: "release"
+            metadata_url: "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/39/Everything/source/tree/"
+          - name: "updates"
+            metadata_url: "https://archives.fedoraproject.org/pub/archive/fedora/linux/updates/39/Everything/source/tree/"
+
+      - version: "40"
+        minpackages: 21000
+        valid_till: "2025-05-13"
+        archived: false
+        repos:
+          - name: "release"
+            metadata_url: "https://fr2.rpmfind.net/linux/fedora/linux/releases/40/Everything/source/tree/"
+          - name: "updates"
+            metadata_url: "https://fr2.rpmfind.net/linux/fedora/linux/updates/40/Everything/source/tree/"
+
+      - version: "41"
+        minpackages: 21000
+        valid_till: "2025-11-19"
+        archived: false
+        repos:
+          - name: "release"
+            metadata_url: "https://fr2.rpmfind.net/linux/fedora/linux/releases/41/Everything/source/tree/"
+          - name: "updates"
+            metadata_url: "https://fr2.rpmfind.net/linux/fedora/linux/updates/41/Everything/source/tree/"
+
+      - version: "42"
+        minpackages: 21000
+        valid_till: "2026-05-13"
+        archived: false
+        repos:
+          - name: "release"
+            metadata_url: "https://fr2.rpmfind.net/linux/fedora/linux/releases/42/Everything/source/tree/"
+          - name: "updates"
+            metadata_url: "https://fr2.rpmfind.net/linux/fedora/linux/updates/42/Everything/source/tree/"
+
+      - version: "rawhide"
+        minpackages: 21000
+        archived: false
+        development: true
+        repos:
+          - name: "development"
+            metadata_url: "https://fr2.rpmfind.net/linux/fedora/linux/development/rawhide/Everything/source/tree/"
+
+    links:
+      homepage: "https://getfedora.org/"
+      packages_search: "https://packages.fedoraproject.org/"
+      repository: "https://src.fedoraproject.org/"
+
+    package_links:
+      homepage_template: "https://packages.fedoraproject.org/pkgs/{srcname}/"
+      sources_template: "https://src.fedoraproject.org/rpms/{srcname}/tree/{fversion}"
+      recipe_template: "https://src.fedoraproject.org/rpms/{srcname}/blob/{fversion}/f/{srcname}.spec"
+      recipe_raw_template: "https://src.fedoraproject.org/rpms/{srcname}/raw/{fversion}/f/{srcname}.spec"
+      build_logs_template: "https://kojipkgs.fedoraproject.org/packages/{srcname}/{rpmversion}/{rpmrelease}/data/logs/"
+
+  ubuntu:
+    enabled: false
+
+  debian:
+    enabled: false
+
+detectors:
+  github:
+    enabled: true
+    rate_limit: 5000
+
+  pypi:
+    enabled: true
+    rate_limit: 1000
