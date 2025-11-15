@@ -243,20 +243,80 @@ class DatabaseManager:
             self.logger.error(f"Error saving package: {e}")
             return None
 
-    def save_packages_batch(self, packages: List[Dict[str, Any]], repository_id: int) -> int:
+    def save_packages_batch(self, packages: List[Dict[str, Any]], repository_id: int, batch_size: int = 500) -> int:
         """
-        Save multiple packages in batch.
+        Save multiple packages in batch using a single connection.
 
         Args:
             packages: List of package data dictionaries
             repository_id: Repository ID
+            batch_size: Number of packages to insert per transaction (default: 500)
 
         Returns:
             Number of packages saved
         """
         saved_count = 0
-        for package in packages:
-            if self.save_package(package, repository_id):
-                saved_count += 1
+        total_packages = len(packages)
+
+        try:
+            # Use a single connection for all operations
+            with self.db.get_cursor() as cursor:
+                # Process in batches to avoid long-running transactions
+                for i in range(0, total_packages, batch_size):
+                    batch = packages[i:i + batch_size]
+
+                    for package in batch:
+                        try:
+                            query = """
+                                INSERT INTO packages (
+                                    repository_id, package_name, display_name, version, upstream_version,
+                                    upstream_release_date, system_release_date, libyear, days_outdated,
+                                    source_url, language, website, description, is_outdated
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                ON DUPLICATE KEY UPDATE
+                                    display_name = VALUES(display_name),
+                                    upstream_version = VALUES(upstream_version),
+                                    upstream_release_date = VALUES(upstream_release_date),
+                                    system_release_date = VALUES(system_release_date),
+                                    libyear = VALUES(libyear),
+                                    days_outdated = VALUES(days_outdated),
+                                    source_url = VALUES(source_url),
+                                    language = VALUES(language),
+                                    website = VALUES(website),
+                                    description = VALUES(description),
+                                    is_outdated = VALUES(is_outdated),
+                                    last_updated = CURRENT_TIMESTAMP
+                            """
+
+                            params = (
+                                repository_id,
+                                package.get("package_name", ""),
+                                package.get("display_name"),
+                                package.get("version", ""),
+                                package.get("upstream_version"),
+                                package.get("upstream_release_date"),
+                                package.get("system_release_date"),
+                                package.get("libyear"),
+                                package.get("days_outdated"),
+                                package.get("source_url"),
+                                package.get("language"),
+                                package.get("website"),
+                                package.get("description"),
+                                package.get("is_outdated", False),
+                            )
+
+                            cursor.execute(query, params)
+                            saved_count += 1
+
+                        except Exception as e:
+                            self.logger.warning(f"Error saving package {package.get('package_name')}: {e}")
+                            continue
+
+                    # Log progress after each batch
+                    self.logger.info(f"Saved {saved_count}/{total_packages} packages")
+
+        except Exception as e:
+            self.logger.error(f"Error in batch save: {e}")
+
         return saved_count
 

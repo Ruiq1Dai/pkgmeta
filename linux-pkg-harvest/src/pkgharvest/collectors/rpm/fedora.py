@@ -8,6 +8,7 @@ import requests
 import gzip
 import xml.etree.ElementTree as ET
 from io import BytesIO
+import time
 
 from pkgharvest.core.base_collector import BaseCollector
 
@@ -104,6 +105,38 @@ class FedoraCollector(BaseCollector):
         self.logger.info(f"Collected {len(packages)} packages from Fedora {version}")
         return packages
 
+    def _fetch_with_retry(self, url: str, timeout: int = 60, max_retries: int = 3, backoff_factor: float = 2.0) -> Optional[requests.Response]:
+        """
+        Fetch URL with retry logic.
+
+        Args:
+            url: URL to fetch
+            timeout: Request timeout in seconds
+            max_retries: Maximum number of retry attempts
+            backoff_factor: Multiplier for exponential backoff
+
+        Returns:
+            Response object or None if all retries failed
+        """
+        for attempt in range(max_retries):
+            try:
+                self.logger.info(f"Fetching {url} (attempt {attempt + 1}/{max_retries})")
+                response = requests.get(url, timeout=timeout, stream=True)
+                response.raise_for_status()
+                return response
+            except requests.Timeout as e:
+                self.logger.warning(f"Timeout on attempt {attempt + 1}/{max_retries}: {e}")
+            except requests.RequestException as e:
+                self.logger.warning(f"Request error on attempt {attempt + 1}/{max_retries}: {e}")
+
+            if attempt < max_retries - 1:
+                wait_time = backoff_factor ** attempt
+                self.logger.info(f"Waiting {wait_time:.1f} seconds before retry...")
+                time.sleep(wait_time)
+
+        self.logger.error(f"Failed to fetch {url} after {max_retries} attempts")
+        return None
+
     def _fetch_repodata(self, metadata_url: str, version: str, repo_name: str) -> List[Dict[str, Any]]:
         """
         Fetch and parse repodata from repository.
@@ -121,10 +154,12 @@ class FedoraCollector(BaseCollector):
         try:
             # Fetch repomd.xml to get primary.xml.gz location
             repomd_url = f"{metadata_url.rstrip('/')}/repodata/repomd.xml"
-            self.logger.debug(f"Fetching repomd.xml from {repomd_url}")
+            self.logger.info(f"Fetching repomd.xml from: {repomd_url}")
 
-            response = requests.get(repomd_url, timeout=30)
-            response.raise_for_status()
+            response = self._fetch_with_retry(repomd_url, timeout=30)
+            if not response:
+                self.logger.error(f"Failed to fetch repomd.xml from {repomd_url}")
+                return packages
 
             # Parse repomd.xml to find primary.xml.gz
             primary_location = self._parse_repomd(response.content)
@@ -134,19 +169,20 @@ class FedoraCollector(BaseCollector):
 
             # Fetch primary.xml.gz
             primary_url = f"{metadata_url.rstrip('/')}/{primary_location}"
-            self.logger.debug(f"Fetching primary metadata from {primary_url}")
+            self.logger.info(f"Fetching primary metadata from: {primary_url}")
 
-            response = requests.get(primary_url, timeout=60)
-            response.raise_for_status()
+            response = self._fetch_with_retry(primary_url, timeout=120)
+            if not response:
+                self.logger.error(f"Failed to fetch primary metadata from {primary_url}")
+                return packages
 
+            self.logger.info(f"Decompressing and parsing metadata...")
             # Decompress and parse
             with gzip.GzipFile(fileobj=BytesIO(response.content)) as f:
                 xml_content = f.read()
 
             packages = self._parse_rpm_metadata(xml_content, version, repo_name)
 
-        except requests.RequestException as e:
-            self.logger.error(f"HTTP error fetching repodata: {e}")
         except Exception as e:
             self.logger.error(f"Error processing repodata: {e}", exc_info=True)
 
@@ -200,10 +236,23 @@ class FedoraCollector(BaseCollector):
         packages = []
 
         try:
+            self.logger.info(f"Parsing XML metadata for {repo_name}...")
             root = ET.fromstring(xml_content)
             ns = {'rpm': 'http://linux.duke.edu/metadata/common'}
 
-            for package_elem in root.findall('rpm:package', ns):
+            # Get total package count for progress reporting
+            all_packages = root.findall('rpm:package', ns)
+            if not all_packages:
+                # Fallback without namespace
+                all_packages = root.findall('package')
+
+            total_count = len(all_packages)
+            self.logger.info(f"Found {total_count} total packages (including binary), filtering source packages...")
+
+            processed_count = 0
+            progress_interval = max(1, total_count // 20)  # Report every 5%
+
+            for package_elem in all_packages:
                 if package_elem.get('type') != 'rpm':
                     continue
 
@@ -214,6 +263,9 @@ class FedoraCollector(BaseCollector):
 
                     # Skip non-source packages
                     if arch_elem is not None and arch_elem.text != 'src':
+                        processed_count += 1
+                        if processed_count % progress_interval == 0:
+                            self.logger.info(f"Processing: {processed_count}/{total_count} packages ({len(packages)} source packages found)")
                         continue
 
                     version_elem = package_elem.find('rpm:version', ns)
@@ -265,14 +317,25 @@ class FedoraCollector(BaseCollector):
                     }
 
                     packages.append(package_data)
+                    processed_count += 1
+
+                    # Report progress
+                    if processed_count % progress_interval == 0:
+                        self.logger.info(f"Processing: {processed_count}/{total_count} packages ({len(packages)} source packages found)")
 
                 except Exception as e:
                     self.logger.warning(f"Error parsing package element: {e}")
                     continue
 
-            # Fallback without namespace
+            # Fallback without namespace if no packages found
             if not packages:
-                for package_elem in root.findall('package'):
+                self.logger.info("No packages found with namespace, trying without namespace...")
+                all_packages = root.findall('package')
+                total_count = len(all_packages)
+                processed_count = 0
+                progress_interval = max(1, total_count // 20)
+
+                for package_elem in all_packages:
                     if package_elem.get('type') != 'rpm':
                         continue
 
@@ -281,6 +344,9 @@ class FedoraCollector(BaseCollector):
                         arch_elem = package_elem.find('arch')
 
                         if arch_elem is not None and arch_elem.text != 'src':
+                            processed_count += 1
+                            if processed_count % progress_interval == 0:
+                                self.logger.info(f"Processing: {processed_count}/{total_count} packages ({len(packages)} source packages found)")
                             continue
 
                         version_elem = package_elem.find('version')
@@ -326,10 +392,16 @@ class FedoraCollector(BaseCollector):
                         }
 
                         packages.append(package_data)
+                        processed_count += 1
+
+                        if processed_count % progress_interval == 0:
+                            self.logger.info(f"Processing: {processed_count}/{total_count} packages ({len(packages)} source packages found)")
 
                     except Exception as e:
                         self.logger.warning(f"Error parsing package element: {e}")
                         continue
+
+            self.logger.info(f"Completed parsing: found {len(packages)} source packages from {total_count} total packages")
 
         except Exception as e:
             self.logger.error(f"Error parsing RPM metadata XML: {e}", exc_info=True)

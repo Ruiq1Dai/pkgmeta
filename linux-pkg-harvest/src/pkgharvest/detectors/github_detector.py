@@ -133,3 +133,27 @@ class GitHubDetector:
 
         return None
 
+    def get_repo_language(self, repo: str) -> Optional[str]:
+        """
+        Get the primary language of a GitHub repository.
+
+        Args:
+            repo: Repository in format "owner/repo"
+
+        Returns:
+            Language string (e.g. 'Python') or None
+        """
+        try:
+            url = f"{self.base_url}/repos/{repo}"
+            headers = {}
+            if self.token:
+                headers["Authorization"] = f"token {self.token}"
+
+            response = self.http_client.get(url, headers=headers)
+            if response and response.get("language"):
+                return response.get("language")
+        except Exception as e:
+            self.logger.warning(f"Error getting repo language from GitHub {repo}: {e}")
+
+        return None
+

@@ -114,7 +114,7 @@ def main():
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/database.yml",
+        default="../configs/database.yml",
         help="Path to database configuration file"
     )
     parser.add_argument(
